@@ -21,7 +21,7 @@ MIN_PJ = 6
 REPS_RADAR = 10000
 
 # --------------------------------------------------------
-# 1. CARGA Y PREPROCESAMIENTO CON CACHÉ ROBUSTO
+# 1. CARGA Y PREPROCESAMIENTO CON EXTRACCIÓN LIMPIA
 # --------------------------------------------------------
 @st.cache_data(ttl=600)
 def cargar_datos_maestros():
@@ -75,38 +75,34 @@ def cargar_datos_maestros():
     df["Tot_FT"] = df["Goles_Loc"] + df["Goles_Vis"]
     df["Tot_1T"] = df["Goles_Loc_1T"] + df["Goles_Vis_1T"]
 
-    # Procesar historial interno
-    c_l_h = [
-        col_f, "Liga", "Local", "Goles_Loc", "xG_Loc",
-        "Goles_Vis", "xG_Vis", "Goles_Loc_1T", "xG_Loc_1T",
-        "Goles_Vis_1T", "xG_Vis_1T", "Tot_FT", "Tot_1T"
-    ]
-    loc = df[c_l_h].rename(columns={
-        "Local": "Equipo", "Goles_Loc": "Goles_FT",
-        "xG_Loc": "xG_FT", "Goles_Vis": "Goles_Contra_FT",
-        "xG_Vis": "xG_Contra_FT", "Goles_Loc_1T": "Goles_1T",
-        "xG_Loc_1T": "xG_1T",
-        "Goles_Vis_1T": "Goles_Contra_1T",
-        "xG_Vis_1T": "xG_Contra_1T"
-    }).reset_index(drop=True)
+    # Construcción segura del historial sin conflictos de índices
+    registros = []
+    for _, row in df.iterrows():
+        fec = row[col_f] if col_f in df.columns else pd.NaT
+        lig = row["Liga"] if "Liga" in df.columns else "General"
+        
+        # Partido como Local
+        registros.append({
+            "Fecha": fec, "Liga": lig, "Equipo": str(row["Local"]).strip(),
+            "Goles_FT": float(row["Goles_Loc"]), "xG_FT": float(row["xG_Loc"]),
+            "Goles_Contra_FT": float(row["Goles_Vis"]), "xG_Contra_FT": float(row["xG_Vis"]),
+            "Goles_1T": float(row["Goles_Loc_1T"]), "xG_1T": float(row["xG_Loc_1T"]),
+            "Goles_Contra_1T": float(row["Goles_Vis_1T"]), "xG_Contra_1T": float(row["xG_Vis_1T"]),
+            "Tot_FT": float(row["Tot_FT"]), "Tot_1T": float(row["Tot_1T"])
+        })
+        # Partido como Visitante
+        registros.append({
+            "Fecha": fec, "Liga": lig, "Equipo": str(row["Visitante"]).strip(),
+            "Goles_FT": float(row["Goles_Vis"]), "xG_FT": float(row["xG_Vis"]),
+            "Goles_Contra_FT": float(row["Goles_Loc"]), "xG_Contra_FT": float(row["xG_Loc"]),
+            "Goles_1T": float(row["Goles_Vis_1T"]), "xG_1T": float(row["xG_Vis_1T"]),
+            "Goles_Contra_1T": float(row["Goles_Loc_1T"]), "xG_Contra_1T": float(row["xG_Loc_1T"]),
+            "Tot_FT": float(row["Tot_FT"]), "Tot_1T": float(row["Tot_1T"])
+        })
 
-    c_v_h = [
-        col_f, "Liga", "Visitante", "Goles_Vis", "xG_Vis",
-        "Goles_Loc", "xG_Loc", "Goles_Vis_1T", "Goles_Vis_1T",
-        "Goles_Loc_1T", "xG_Loc_1T", "Tot_FT", "Tot_1T"
-    ]
-    vis = df[c_v_h].rename(columns={
-        "Visitante": "Equipo", "Goles_Vis": "Goles_FT",
-        "xG_Vis": "xG_FT", "Goles_Loc": "Goles_Contra_FT",
-        "xG_Loc": "xG_Contra_FT", "Goles_Vis_1T": "Goles_1T",
-        "xG_Vis_1T": "xG_1T",
-        "Goles_Loc_1T": "Goles_Contra_1T",
-        "xG_Loc_1T": "xG_Contra_1T"
-    }).reset_index(drop=True)
-
-    hist = pd.concat([loc, vis], ignore_index=True).dropna(subset=["Equipo"])
-    hist = hist[hist["Equipo"] != ""].sort_values(
-        by=["Equipo", col_f]
+    hist = pd.DataFrame(registros).dropna(subset=["Equipo"])
+    hist = hist[(hist["Equipo"] != "") & (hist["Equipo"].str.lower() != "nan")].sort_values(
+        by=["Equipo", "Fecha"]
     ).reset_index(drop=True)
 
     cnt = hist.groupby("Equipo").size()
@@ -191,10 +187,10 @@ with tab1:
                 item["Bloque"] = "🟡 AMARILLO"
                 amarillo.append(item)
 
-        sort_k = lambda x: (x["PJ_Blanco"], x["xG_Acum"])
-        rojo = sorted(rojo, key=sort_k, reverse=True)
-        naranja = sorted(naranja, key=sort_k, reverse=True)
-        amarillo = sorted(amarillo, key=sort_k, reverse=True)
+    sort_k = lambda x: (x["PJ_Blanco"], x["xG_Acum"])
+    rojo = sorted(rojo, key=sort_k, reverse=True)
+    naranja = sorted(naranja, key=sort_k, reverse=True)
+    amarillo = sorted(amarillo, key=sort_k, reverse=True)
 
     if f_m1 == "🔴 Solo Bloque Rojo":
         datos = rojo
@@ -260,10 +256,9 @@ with tab2:
                 item["Bloque"] = "🟡 AMARILLO"
                 amarillo_ht.append(item)
 
-        sort_k = lambda x: (x["Racha_00_HT"], x["xG_HT_Acum"])
-        rojo_ht = sorted(rojo_ht, key=sort_k, reverse=True)
-        naranja_ht = sorted(naranja_ht, key=sort_k, reverse=True)
-        amarillo_ht = sorted(amarillo_ht, key=sort_k, reverse=True)
+    rojo_ht = sorted(rojo_ht, key=lambda x: (x["Racha_00_HT"], x["xG_HT_Acum"]), reverse=True)
+    naranja_ht = sorted(naranja_ht, key=lambda x: (x["Racha_00_HT"], x["xG_HT_Acum"]), reverse=True)
+    amarillo_ht = sorted(amarillo_ht, key=lambda x: (x["Racha_00_HT"], x["xG_HT_Acum"]), reverse=True)
 
     if f_m2 == "🔴 Solo Bloque Rojo HT":
         datos_ht = rojo_ht
