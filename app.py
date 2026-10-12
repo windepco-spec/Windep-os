@@ -88,25 +88,26 @@ def cargar_datos_maestros():
         "xG_Loc_1T": "xG_1T",
         "Goles_Vis_1T": "Goles_Contra_1T",
         "xG_Vis_1T": "xG_Contra_1T"
-    })
+    }).reset_index(drop=True)
+
     c_v_h = [
         col_f, "Liga", "Visitante", "Goles_Vis", "xG_Vis",
-        "Goles_Loc", "xG_Loc", "Goles_Vis_1T", "xG_Vis_1T",
+        "Goles_Loc", "xG_Loc", "Goles_Vis_1T", "Goles_Vis_1T",
         "Goles_Loc_1T", "xG_Loc_1T", "Tot_FT", "Tot_1T"
     ]
     vis = df[c_v_h].rename(columns={
         "Visitante": "Equipo", "Goles_Vis": "Goles_FT",
         "xG_Vis": "xG_FT", "Goles_Loc": "Goles_Contra_FT",
         "xG_Loc": "xG_Contra_FT", "Goles_Vis_1T": "Goles_1T",
-        "xG_Vis_1T": "xG_Contra_1T",
+        "xG_Vis_1T": "xG_1T",
         "Goles_Loc_1T": "Goles_Contra_1T",
         "xG_Loc_1T": "xG_Contra_1T"
-    })
+    }).reset_index(drop=True)
 
-    hist = pd.concat([loc, vis]).dropna(subset=["Equipo"])
+    hist = pd.concat([loc, vis], ignore_index=True).dropna(subset=["Equipo"])
     hist = hist[hist["Equipo"] != ""].sort_values(
         by=["Equipo", col_f]
-    )
+    ).reset_index(drop=True)
 
     cnt = hist.groupby("Equipo").size()
     rob = cnt[cnt >= MIN_PJ].index
@@ -190,10 +191,10 @@ with tab1:
                 item["Bloque"] = "🟡 AMARILLO"
                 amarillo.append(item)
 
-    sort_k = lambda x: (x["PJ_Blanco"], x["xG_Acum"])
-    rojo = sorted(rojo, key=sort_k, reverse=True)
-    naranja = sorted(naranja, key=sort_k, reverse=True)
-    amarillo = sorted(amarillo, key=sort_k, reverse=True)
+        sort_k = lambda x: (x["PJ_Blanco"], x["xG_Acum"])
+        rojo = sorted(rojo, key=sort_k, reverse=True)
+        naranja = sorted(naranja, key=sort_k, reverse=True)
+        amarillo = sorted(amarillo, key=sort_k, reverse=True)
 
     if f_m1 == "🔴 Solo Bloque Rojo":
         datos = rojo
@@ -259,10 +260,10 @@ with tab2:
                 item["Bloque"] = "🟡 AMARILLO"
                 amarillo_ht.append(item)
 
-    sort_k = lambda x: (x["Racha_00_HT"], x["xG_HT_Acum"])
-    rojo_ht = sorted(rojo_ht, key=sort_k, reverse=True)
-    naranja_ht = sorted(naranja_ht, key=sort_k, reverse=True)
-    amarillo_ht = sorted(amarillo_ht, key=sort_k, reverse=True)
+        sort_k = lambda x: (x["Racha_00_HT"], x["xG_HT_Acum"])
+        rojo_ht = sorted(rojo_ht, key=sort_k, reverse=True)
+        naranja_ht = sorted(naranja_ht, key=sort_k, reverse=True)
+        amarillo_ht = sorted(amarillo_ht, key=sort_k, reverse=True)
 
     if f_m2 == "🔴 Solo Bloque Rojo HT":
         datos_ht = rojo_ht
@@ -488,7 +489,7 @@ with tab4:
             with col_res2:
                 st.metric("X (Empate)", f"{p_x*100:.1f}%", f"Cuota: {1.0/p_x:.2f}")
             with col_res3:
-                st.metric("2 (Visita)", f"{p_2*100:.1f}%", f"Cuota: {1.0/p_2pisos:.2f}" if 'pisos' not in locals() else f"Cuota: {1.0/p_2:.2f}")
+                st.metric("2 (Visita)", f"{p_2*100:.1f}%", f"Cuota: {1.0/p_2:.2f}")
 
             st.markdown("#### Top Marcadores Exactos:")
             cols_sc = st.columns(5)
