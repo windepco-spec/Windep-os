@@ -21,7 +21,7 @@ MIN_PJ = 6
 REPS_RADAR = 10000
 
 # --------------------------------------------------------
-# 1. CARGA Y PREPROCESAMIENTO EXACTO (ORIGINAL WINDEP BLINDADO)
+# 1. CARGA Y PREPROCESAMIENTO MAESTRO EXACTO
 # --------------------------------------------------------
 @st.cache_data(ttl=600)
 def cargar_datos_maestros():
@@ -75,7 +75,7 @@ def cargar_datos_maestros():
     df["Tot_FT"] = df["Goles_Loc"] + df["Goles_Vis"]
     df["Tot_1T"] = df["Goles_Loc_1T"] + df["Goles_Vis_1T"]
 
-    # Extracción de historial idéntica al original con índices limpios
+    # Construcción de historial idéntica a tu original
     c_l_h = [
         col_f, "Liga", "Local", "Goles_Loc", "xG_Loc",
         "Goles_Vis", "xG_Vis", "Goles_Loc_1T", "xG_Loc_1T",
@@ -149,7 +149,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 # --------------------------------------------------------
-# PESTAÑA 1: SEQUÍAS FT
+# PESTAÑA 1: SEQUÍAS FT Y POST 0-0
 # --------------------------------------------------------
 with tab1:
     st.subheader("Análisis de Sequías Full Time y Post 0-0")
@@ -175,7 +175,7 @@ with tab1:
 
         if racha >= 1 or p00:
             item = {
-                "Equipo": eq.upper(), "Liga": lg,
+                "Equipo": eq, "Liga": lg,
                 "PJ_Blanco": racha, "xG_Acum": xg_acum,
                 "Vino_0-0": "SÍ" if p00 else "NO"
             }
@@ -245,15 +245,16 @@ with tab2:
 
         if racha_ht >= 1:
             item = {
-                "Equipo": eq.upper(), "Liga": lg,
+                "Equipo": eq, "Liga": lg,
                 "Racha_00_HT": racha_ht,
                 "xG_HT_Acum": xg_ht_acum
             }
             c_r = (racha_ht >= 3 and xg_ht_acum >= 2.0)
+            c_n = (racha_ht >= 2 or xg_ht_acum >= 1.0)
             if c_r:
                 item["Bloque"] = "🔴 ROJO"
                 rojo_ht.append(item)
-            elif racha_ht >= 2:
+            elif c_n:
                 item["Bloque"] = "🟠 NARANJA"
                 naranja_ht.append(item)
             else:
@@ -293,7 +294,7 @@ with tab3:
         w_perfil_m3 = st.selectbox(
             "Estrategia:",
             ["1. Conservador (1.20 - 1.55)", "2. Valor Medio (1.60 - 2.10)", "3. Cuotas Altas (2.15 - 3.50+)", "4. Rebote +EV (xG > Goles)", "5. Top 25 Absoluto (>70%)"],
-            key="filtro_estrategia_m3"
+            key="perfil_m3"
         )
         
     if st.button("Generar Radar Combinadas", type="primary"):
@@ -364,7 +365,7 @@ with tab3:
                     if prob > 0:
                         cj = 100.0 / prob
                         resultados.append({
-                            "Equipo": eq.upper(), "Liga": lg,
+                            "Equipo": eq, "Liga": lg,
                             "Mercado": m_nom, "Certeza_%": prob,
                             "Cuota_Min": cj, "Regresion": reg_tag,
                             "Deuda_xG": deuda
