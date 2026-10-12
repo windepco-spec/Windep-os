@@ -21,7 +21,7 @@ MIN_PJ = 6
 REPS_RADAR = 10000
 
 # --------------------------------------------------------
-# 1. CARGA Y PREPROCESAMIENTO CON EXTRACCIÓN LIMPIA
+# 1. CARGA Y PREPROCESAMIENTO EXACTO (ORIGINAL WINDEP)
 # --------------------------------------------------------
 @st.cache_data(ttl=600)
 def cargar_datos_maestros():
@@ -75,34 +75,38 @@ def cargar_datos_maestros():
     df["Tot_FT"] = df["Goles_Loc"] + df["Goles_Vis"]
     df["Tot_1T"] = df["Goles_Loc_1T"] + df["Goles_Vis_1T"]
 
-    # Construcción segura del historial sin conflictos de índices
-    registros = []
-    for _, row in df.iterrows():
-        fec = row[col_f] if col_f in df.columns else pd.NaT
-        lig = row["Liga"] if "Liga" in df.columns else "General"
-        
-        # Partido como Local
-        registros.append({
-            "Fecha": fec, "Liga": lig, "Equipo": str(row["Local"]).strip(),
-            "Goles_FT": float(row["Goles_Loc"]), "xG_FT": float(row["xG_Loc"]),
-            "Goles_Contra_FT": float(row["Goles_Vis"]), "xG_Contra_FT": float(row["xG_Vis"]),
-            "Goles_1T": float(row["Goles_Loc_1T"]), "xG_1T": float(row["xG_Loc_1T"]),
-            "Goles_Contra_1T": float(row["Goles_Vis_1T"]), "xG_Contra_1T": float(row["xG_Vis_1T"]),
-            "Tot_FT": float(row["Tot_FT"]), "Tot_1T": float(row["Tot_1T"])
-        })
-        # Partido como Visitante
-        registros.append({
-            "Fecha": fec, "Liga": lig, "Equipo": str(row["Visitante"]).strip(),
-            "Goles_FT": float(row["Goles_Vis"]), "xG_FT": float(row["xG_Vis"]),
-            "Goles_Contra_FT": float(row["Goles_Loc"]), "xG_Contra_FT": float(row["xG_Loc"]),
-            "Goles_1T": float(row["Goles_Vis_1T"]), "xG_1T": float(row["xG_Vis_1T"]),
-            "Goles_Contra_1T": float(row["Goles_Loc_1T"]), "xG_Contra_1T": float(row["xG_Loc_1T"]),
-            "Tot_FT": float(row["Tot_FT"]), "Tot_1T": float(row["Tot_1T"])
-        })
+    # Extracción de historial idéntica al Colab original
+    c_l_h = [
+        col_f, "Liga", "Local", "Goles_Loc", "xG_Loc",
+        "Goles_Vis", "xG_Vis", "Goles_Loc_1T", "xG_Loc_1T",
+        "Goles_Vis_1T", "xG_Vis_1T", "Tot_FT", "Tot_1T"
+    ]
+    loc = df[c_l_h].rename(columns={
+        "Local": "Equipo", "Goles_Loc": "Goles_FT",
+        "xG_Loc": "xG_FT", "Goles_Vis": "Goles_Contra_FT",
+        "xG_Vis": "xG_Contra_FT", "Goles_Loc_1T": "Goles_1T",
+        "xG_Loc_1T": "xG_1T",
+        "Goles_Vis_1T": "Goles_Contra_1T",
+        "xG_Vis_1T": "xG_Contra_1T"
+    })
 
-    hist = pd.DataFrame(registros).dropna(subset=["Equipo"])
-    hist = hist[(hist["Equipo"] != "") & (hist["Equipo"].str.lower() != "nan")].sort_values(
-        by=["Equipo", "Fecha"]
+    c_v_h = [
+        col_f, "Liga", "Visitante", "Goles_Vis", "xG_Vis",
+        "Goles_Loc", "xG_Loc", "Goles_Vis_1T", "Goles_Vis_1T",
+        "Goles_Loc_1T", "xG_Loc_1T", "Tot_FT", "Tot_1T"
+    ]
+    vis = df[c_v_h].rename(columns={
+        "Visitante": "Equipo", "Goles_Vis": "Goles_FT",
+        "xG_Vis": "xG_FT", "Goles_Loc": "Goles_Contra_FT",
+        "xG_Loc": "xG_Contra_FT", "Goles_Vis_1T": "Goles_1T",
+        "xG_Vis_1T": "xG_1T",
+        "Goles_Loc_1T": "Goles_Contra_1T",
+        "xG_Loc_1T": "xG_Contra_1T"
+    })
+
+    hist = pd.concat([loc, vis]).dropna(subset=["Equipo"])
+    hist = hist[hist["Equipo"] != ""].sort_values(
+        by=["Equipo", col_f]
     ).reset_index(drop=True)
 
     cnt = hist.groupby("Equipo").size()
@@ -256,9 +260,10 @@ with tab2:
                 item["Bloque"] = "🟡 AMARILLO"
                 amarillo_ht.append(item)
 
-    rojo_ht = sorted(rojo_ht, key=lambda x: (x["Racha_00_HT"], x["xG_HT_Acum"]), reverse=True)
-    naranja_ht = sorted(naranja_ht, key=lambda x: (x["Racha_00_HT"], x["xG_HT_Acum"]), reverse=True)
-    amarillo_ht = sorted(amarillo_ht, key=lambda x: (x["Racha_00_HT"], x["xG_HT_Acum"]), reverse=True)
+    sort_k = lambda x: (x["Racha_00_HT"], x["xG_HT_Acum"])
+    rojo_ht = sorted(rojo_ht, key=sort_k, reverse=True)
+    naranja_ht = sorted(naranja_ht, key=sort_k, reverse=True)
+    amarillo_ht = sorted(amarillo_ht, key=sort_k, reverse=True)
 
     if f_m2 == "🔴 Solo Bloque Rojo HT":
         datos_ht = rojo_ht
@@ -292,7 +297,7 @@ with tab3:
         )
         
     if st.button("Generar Radar Combinadas", type="primary"):
-        with st.spinner("⏳ Simulando 10,000 universos Monte Carlo... Por favor espere."):
+        with st.spinner("⏳ Simulando 10,000 universos Monte Carlo..."):
             np.random.seed(42)
             base = ESTADO_ACTUAL if w_liga_m3 == "Todas" else ESTADO_ACTUAL[ESTADO_ACTUAL["Liga"] == w_liga_m3]
             resultados = []
@@ -391,7 +396,7 @@ with tab3:
                 st.dataframe(top25.style.format({"Certeza_%": "{:.1f}%", "Cuota_Min": "{:.2f}", "Deuda_xG": "{:+.2f}"}), use_container_width=True)
 
 # --------------------------------------------------------
-# PESTAÑA 4: CALCULADORA 1X2 Y MARCADORES EXACTOS
+# PESTAÑA 4: CALCULADORA 1X2 ORIGINAL
 # --------------------------------------------------------
 with tab4:
     st.subheader("Calculadora 1X2, Deudas, Rachas y Marcadores Exactos")
@@ -431,15 +436,34 @@ with tab4:
             deuda_v_ht = float(e2["Deuda_1T"])
 
             p_lg = DF_RAW[DF_RAW["Liga"] == lg]
-            ha_f = max(1.05, min(1.60, p_lg["xG_Loc"].mean() / max(0.5, p_lg["xG_Vis"].mean()))) if len(p_lg) >= 15 else 1.25
+            if len(p_lg) >= 15:
+                ha_r = (
+                    p_lg["xG_Loc"].mean() /
+                    max(0.5, p_lg["xG_Vis"].mean())
+                )
+                ha_f = max(1.05, min(1.60, ha_r))
+            else:
+                ha_f = 1.25
 
             h_m = DF_RAW[DF_RAW["Local"] == w_home_1x2]
             a_m = DF_RAW[DF_RAW["Visitante"] == w_away_1x2]
 
-            xg_f_h = h_m["xG_Loc"].mean() if len(h_m) >= 3 else e1["EMA_xG_FT"]
-            xg_c_h = h_m["xG_Vis"].mean() if len(h_m) >= 3 else e1["EMA_xG_Contra_FT"]
-            xg_f_a = a_m["xG_Vis"].mean() if len(a_m) >= 3 else e2["EMA_xG_FT"]
-            xg_c_a = a_m["xG_Loc"].mean() if len(a_m) >= 3 else e2["EMA_xG_Contra_FT"]
+            xg_f_h = (
+                h_m["xG_Loc"].mean() if len(h_m) >= 3
+                else e1["EMA_xG_FT"]
+            )
+            xg_c_h = (
+                h_m["xG_Vis"].mean() if len(h_m) >= 3
+                else e1["EMA_xG_Contra_FT"]
+            )
+            xg_f_a = (
+                a_m["xG_Vis"].mean() if len(a_m) >= 3
+                else e2["EMA_xG_FT"]
+            )
+            xg_c_a = (
+                a_m["xG_Loc"].mean() if len(a_m) >= 3
+                else e2["EMA_xG_Contra_FT"]
+            )
 
             xg_el = 0.65 * xg_f_h + 0.35 * e1["EMA_xG_FT"]
             xg_evc = 0.65 * xg_c_a + 0.35 * e2["EMA_xG_Contra_FT"]
@@ -454,14 +478,22 @@ with tab4:
             p_1, p_x, p_2 = 0.0, 0.0, 0.0
             scores = []
             for i in range(7):
-                pi = (math.exp(-lam_l) * (lam_l**i)) / math.factorial(i)
+                pi = (
+                    math.exp(-lam_l) * (lam_l**i)
+                ) / math.factorial(i)
                 for j in range(7):
-                    pj = (math.exp(-lam_v) * (lam_v**j)) / math.factorial(j)
+                    pj = (
+                        math.exp(-lam_v) * (lam_v**j)
+                    ) / math.factorial(j)
                     p_ij = pi * pj
                     scores.append((f"{i}-{j}", p_ij))
                     if i > j: p_1 += p_ij
                     elif i == j: p_x += p_ij
                     else: p_2 += p_ij
+
+            c_1 = 1.0 / p_1 if p_1 > 0 else 0.0
+            c_x = 1.0 / p_x if p_x > 0 else 0.0
+            c_2 = 1.0 / p_2 if p_2 > 0 else 0.0
 
             scores.sort(key=lambda x: x[1], reverse=True)
             top5 = scores[:5]
@@ -480,11 +512,11 @@ with tab4:
 
             col_res1, col_res2, col_res3 = st.columns(3)
             with col_res1:
-                st.metric("1 (Local)", f"{p_1*100:.1f}%", f"Cuota: {1.0/p_1:.2f}")
+                st.metric("1 (Local)", f"{p_1*100:.1f}%", f"Cuota: {c_1:.2f}")
             with col_res2:
-                st.metric("X (Empate)", f"{p_x*100:.1f}%", f"Cuota: {1.0/p_x:.2f}")
+                st.metric("X (Empate)", f"{p_x*100:.1f}%", f"Cuota: {c_x:.2f}")
             with col_res3:
-                st.metric("2 (Visita)", f"{p_2*100:.1f}%", f"Cuota: {1.0/p_2:.2f}")
+                st.metric("2 (Visita)", f"{p_2*100:.1f}%", f"Cuota: {c_2:.2f}")
 
             st.markdown("#### Top Marcadores Exactos:")
             cols_sc = st.columns(5)
