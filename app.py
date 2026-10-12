@@ -21,7 +21,7 @@ MIN_PJ = 6
 REPS_RADAR = 10000
 
 # --------------------------------------------------------
-# 1. CARGA Y PREPROCESAMIENTO EXACTO (ORIGINAL WINDEP)
+# 1. CARGA Y PREPROCESAMIENTO EXACTO (ORIGINAL WINDEP BLINDADO)
 # --------------------------------------------------------
 @st.cache_data(ttl=600)
 def cargar_datos_maestros():
@@ -75,7 +75,7 @@ def cargar_datos_maestros():
     df["Tot_FT"] = df["Goles_Loc"] + df["Goles_Vis"]
     df["Tot_1T"] = df["Goles_Loc_1T"] + df["Goles_Vis_1T"]
 
-    # Extracción de historial idéntica al Colab original
+    # Extracción de historial idéntica al original con índices limpios
     c_l_h = [
         col_f, "Liga", "Local", "Goles_Loc", "xG_Loc",
         "Goles_Vis", "xG_Vis", "Goles_Loc_1T", "xG_Loc_1T",
@@ -88,11 +88,11 @@ def cargar_datos_maestros():
         "xG_Loc_1T": "xG_1T",
         "Goles_Vis_1T": "Goles_Contra_1T",
         "xG_Vis_1T": "xG_Contra_1T"
-    })
+    }).reset_index(drop=True)
 
     c_v_h = [
         col_f, "Liga", "Visitante", "Goles_Vis", "xG_Vis",
-        "Goles_Loc", "xG_Loc", "Goles_Vis_1T", "Goles_Vis_1T",
+        "Goles_Loc", "xG_Loc", "Goles_Vis_1T", "xG_Vis_1T",
         "Goles_Loc_1T", "xG_Loc_1T", "Tot_FT", "Tot_1T"
     ]
     vis = df[c_v_h].rename(columns={
@@ -102,10 +102,10 @@ def cargar_datos_maestros():
         "xG_Vis_1T": "xG_1T",
         "Goles_Loc_1T": "Goles_Contra_1T",
         "xG_Loc_1T": "xG_Contra_1T"
-    })
+    }).reset_index(drop=True)
 
-    hist = pd.concat([loc, vis]).dropna(subset=["Equipo"])
-    hist = hist[hist["Equipo"] != ""].sort_values(
+    hist = pd.concat([loc, vis], ignore_index=True).dropna(subset=["Equipo"])
+    hist = hist[(hist["Equipo"] != "") & (hist["Equipo"].str.lower() != "nan")].sort_values(
         by=["Equipo", col_f]
     ).reset_index(drop=True)
 
@@ -293,7 +293,7 @@ with tab3:
         w_perfil_m3 = st.selectbox(
             "Estrategia:",
             ["1. Conservador (1.20 - 1.55)", "2. Valor Medio (1.60 - 2.10)", "3. Cuotas Altas (2.15 - 3.50+)", "4. Rebote +EV (xG > Goles)", "5. Top 25 Absoluto (>70%)"],
-            key="perfil_m3"
+            key="filtro_estrategia_m3"
         )
         
     if st.button("Generar Radar Combinadas", type="primary"):
