@@ -327,67 +327,116 @@ try:
         st.error("No se encontraron equipos con al menos 6 partidos.")
         st.stop()
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Partidos en la base", f"{len(DF_RAW):,}")
-    c2.metric("Equipos procesados", f"{len(TEAMS):,}")
-    c3.metric("Ligas", f"{DF_RAW['Liga'].nunique():,}")
+    tab_calc, tab_base, tab_diag = st.tabs([
+        "⚽ Calculadora", "🗂️ Base histórica", "🧪 Diagnóstico"
+    ])
 
-    st.subheader("Calculadora matemática de partidos")
-    st.write("Selecciona dos equipos. El motor utiliza las fórmulas del cuaderno original.")
-    col1, col2 = st.columns(2)
-    local = col1.selectbox("Equipo local", TEAMS, index=0)
-    visitantes = [t for t in TEAMS if t != local]
-    visita = col2.selectbox("Equipo visitante", visitantes, index=0 if visitantes else None)
+    with tab_calc:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Partidos en la base", f"{len(DF_RAW):,}")
+        c2.metric("Equipos procesados", f"{len(TEAMS):,}")
+        c3.metric("Ligas", f"{DF_RAW['Liga'].nunique():,}")
 
-    span = st.selectbox("Ventana EMA", [6, 8, 12], index=1)
-    hibrido = st.toggle("Modelo híbrido xG + goles (original)", value=True)
-    multiplicador = st.number_input("Multiplicador de lambda", min_value=0.10, max_value=2.00, value=1.00, step=0.05)
+        st.subheader("Calculadora matemática de partidos")
+        st.write("Selecciona dos equipos. El motor utiliza las fórmulas del cuaderno original.")
+        col1, col2 = st.columns(2)
+        local = col1.selectbox("Equipo local", TEAMS, index=0, key="calc_local")
+        visitantes = [t for t in TEAMS if t != local]
+        visita = col2.selectbox("Equipo visitante", visitantes, index=0 if visitantes else None, key="calc_visita")
 
-    if st.button("Calcular probabilidades", type="primary", use_container_width=True):
-        if local == visita:
-            st.error("Selecciona dos equipos diferentes.")
+        span = st.selectbox("Ventana EMA", [6, 8, 12], index=1, key="calc_span")
+        hibrido = st.toggle("Modelo híbrido xG + goles (original)", value=True, key="calc_hibrido")
+        multiplicador = st.number_input("Multiplicador de lambda", min_value=0.10, max_value=2.00, value=1.00, step=0.05, key="calc_mult")
+
+        if st.button("Calcular probabilidades", type="primary", use_container_width=True):
+            if local == visita:
+                st.error("Selecciona dos equipos diferentes.")
+            else:
+                res = calcular_poisson_partido(local, visita, span=span, hibrido=hibrido, mult_lambda=float(multiplicador))
+                st.markdown(f"### {local} vs {visita}")
+                st.caption(f"Liga detectada por el modelo: {res['lg']} · EMA span={span} · Híbrido={hibrido}")
+                a, b, c = st.columns(3)
+                a.metric("Gana local", f"{res['p_1']*100:.1f}%", f"Cuota justa {res['c_1']:.2f}")
+                b.metric("Empate", f"{res['p_x']*100:.1f}%", f"Cuota justa {res['c_x']:.2f}")
+                c.metric("Gana visita", f"{res['p_2']*100:.1f}%", f"Cuota justa {res['c_2']:.2f}")
+
+                st.subheader("Mercados de goles")
+                markets = [
+                    ("Más de 0.5 goles FT", "p_05_ft", "c_05_ft"),
+                    ("Más de 1.5 goles FT", "p_15_ft", "c_15_ft"),
+                    ("Más de 2.5 goles FT", "p_25_ft", "c_25_ft"),
+                    ("Más de 3.5 goles FT", "p_35_ft", "c_35_ft"),
+                    ("Menos de 2.5 goles FT", "p_u25_ft", "c_u25_ft"),
+                    ("Menos de 3.5 goles FT", "p_u35_ft", "c_u35_ft"),
+                    ("Ambos marcan: Sí", "p_btts", "c_btts"),
+                    ("Ambos marcan: No", "p_btts_no", "c_btts_no"),
+                    ("Gol en primer tiempo", "p_05_ht", "c_05_ht"),
+                    ("Gol local", "p_gl", "c_gl"),
+                    ("Gol visitante", "p_gv", "c_gv"),
+                    ("Local marca 2+", "p_gl_15", "c_gl_15"),
+                    ("Visitante marca 2+", "p_gv_15", "c_gv_15"),
+                ]
+                tab = pd.DataFrame([{"Mercado": name, "Probabilidad (%)": res[p], "Cuota justa": res[o]} for name,p,o in markets])
+                tab["Probabilidad (%)"] = tab["Probabilidad (%)"].map(lambda x: round(float(x),1))
+                st.dataframe(tab.sort_values("Probabilidad (%)", ascending=False), use_container_width=True, hide_index=True)
+
+                st.subheader("Marcadores exactos más probables")
+                scores = pd.DataFrame(res["top5"], columns=["Marcador", "Probabilidad"])
+                scores["Probabilidad (%)"] = (scores.pop("Probabilidad")*100).round(2)
+                st.dataframe(scores, use_container_width=True, hide_index=True)
+
+                st.subheader("Parámetros estimados por el motor")
+                p1, p2, p3 = st.columns(3)
+                p1.metric("Lambda local", f"{res['lam_l']:.3f}")
+                p2.metric("Lambda visitante", f"{res['lam_v']:.3f}")
+                p3.metric("Lambda total", f"{res['lam_tot']:.3f}")
+                st.info("Probabilidades estimadas, no garantías. La cuota justa es el inverso de la probabilidad estimada, sin margen de la casa.")
         else:
-            res = calcular_poisson_partido(local, visita, span=span, hibrido=hibrido, mult_lambda=float(multiplicador))
-            st.markdown(f"### {local} vs {visita}")
-            st.caption(f"Liga detectada por el modelo: {res['lg']} · EMA span={span} · Híbrido={hibrido}")
-            a, b, c = st.columns(3)
-            a.metric("Gana local", f"{res['p_1']*100:.1f}%", f"Cuota justa {res['c_1']:.2f}")
-            b.metric("Empate", f"{res['p_x']*100:.1f}%", f"Cuota justa {res['c_x']:.2f}")
-            c.metric("Gana visita", f"{res['p_2']*100:.1f}%", f"Cuota justa {res['c_2']:.2f}")
+            st.info("Selecciona los equipos y pulsa «Calcular probabilidades» para ejecutar el motor.")
 
-            st.subheader("Mercados de goles")
-            markets = [
-                ("Más de 0.5 goles FT", "p_05_ft", "c_05_ft"),
-                ("Más de 1.5 goles FT", "p_15_ft", "c_15_ft"),
-                ("Más de 2.5 goles FT", "p_25_ft", "c_25_ft"),
-                ("Más de 3.5 goles FT", "p_35_ft", "c_35_ft"),
-                ("Menos de 2.5 goles FT", "p_u25_ft", "c_u25_ft"),
-                ("Menos de 3.5 goles FT", "p_u35_ft", "c_u35_ft"),
-                ("Ambos marcan: Sí", "p_btts", "c_btts"),
-                ("Ambos marcan: No", "p_btts_no", "c_btts_no"),
-                ("Gol en primer tiempo", "p_05_ht", "c_05_ht"),
-                ("Gol local", "p_gl", "c_gl"),
-                ("Gol visitante", "p_gv", "c_gv"),
-                ("Local marca 2+", "p_gl_15", "c_gl_15"),
-                ("Visitante marca 2+", "p_gv_15", "c_gv_15"),
-            ]
-            tab = pd.DataFrame([{"Mercado": name, "Probabilidad (%)": res[p], "Cuota justa": res[o]} for name,p,o in markets])
-            tab["Probabilidad (%)"] = tab["Probabilidad (%)"].map(lambda x: round(float(x),1))
-            st.dataframe(tab.sort_values("Probabilidad (%)", ascending=False), use_container_width=True, hide_index=True)
+    with tab_base:
+        st.subheader("Base histórica conectada")
+        st.caption("Vista de control de la fuente. No edita ni modifica Google Sheets.")
+        st.write("Columnas disponibles:", ", ".join(map(str, DF_RAW.columns.tolist())))
+        filtros = st.columns(3)
+        ligas = sorted(DF_RAW["Liga"].dropna().astype(str).unique().tolist()) if "Liga" in DF_RAW.columns else []
+        liga_sel = filtros[0].selectbox("Liga", ["Todas"] + ligas)
+        if "Fecha" in DF_RAW.columns:
+            fechas = pd.to_datetime(DF_RAW["Fecha"], errors="coerce", dayfirst=True)
+            df_show = DF_RAW.copy()
+            df_show["_fecha_dt"] = fechas
+            if liga_sel != "Todas" and "Liga" in df_show.columns:
+                df_show = df_show[df_show["Liga"].astype(str) == liga_sel]
+            df_show = df_show.sort_values("_fecha_dt", ascending=False, na_position="last")
+            df_show = df_show.drop(columns=["_fecha_dt"])
+        else:
+            df_show = DF_RAW.copy()
+            if liga_sel != "Todas" and "Liga" in df_show.columns:
+                df_show = df_show[df_show["Liga"].astype(str) == liga_sel]
+        busqueda = filtros[1].text_input("Buscar equipo")
+        if busqueda:
+            mask = df_show.astype(str).apply(lambda col: col.str.contains(busqueda, case=False, na=False)).any(axis=1)
+            df_show = df_show[mask]
+        filtros[2].metric("Filas filtradas", f"{len(df_show):,}")
+        st.dataframe(df_show.head(500), use_container_width=True, hide_index=True)
+        st.caption("Se muestran como máximo 500 filas para mantener rápida la aplicación.")
 
-            st.subheader("Marcadores exactos más probables")
-            scores = pd.DataFrame(res["top5"], columns=["Marcador", "Probabilidad"])
-            scores["Probabilidad (%)"] = (scores.pop("Probabilidad")*100).round(2)
-            st.dataframe(scores, use_container_width=True, hide_index=True)
+    with tab_diag:
+        st.subheader("Diagnóstico de datos y motor")
+        d1, d2, d3, d4 = st.columns(4)
+        d1.metric("Filas", f"{len(DF_RAW):,}")
+        d2.metric("Columnas", f"{len(DF_RAW.columns):,}")
+        d3.metric("Celdas vacías", f"{int(DF_RAW.isna().sum().sum()):,}")
+        d4.metric("Duplicados exactos", f"{int(DF_RAW.duplicated().sum()):,}")
+        st.markdown("**Campos detectados**")
+        st.dataframe(pd.DataFrame({
+            "Columna": DF_RAW.columns.astype(str),
+            "Tipo": [str(x) for x in DF_RAW.dtypes],
+            "Nulos": [int(DF_RAW[c].isna().sum()) for c in DF_RAW.columns],
+            "Valores únicos": [int(DF_RAW[c].nunique(dropna=True)) for c in DF_RAW.columns],
+        }), use_container_width=True, hide_index=True)
+        st.warning("Este diagnóstico describe la base cargada; no demuestra por sí solo que las probabilidades estén calibradas ni que exista rentabilidad.")
 
-            st.subheader("Parámetros estimados por el motor")
-            p1, p2, p3 = st.columns(3)
-            p1.metric("Lambda local", f"{res['lam_l']:.3f}")
-            p2.metric("Lambda visitante", f"{res['lam_v']:.3f}")
-            p3.metric("Lambda total", f"{res['lam_tot']:.3f}")
-            st.info("Las probabilidades son estimaciones del modelo, no garantías. La cuota justa es el inverso de la probabilidad estimada, sin margen de la casa.")
-    else:
-        st.info("Selecciona los equipos y pulsa «Calcular probabilidades» para ejecutar el motor.")
 except Exception as exc:
     st.error("El motor no pudo iniciar.")
     st.exception(exc)
